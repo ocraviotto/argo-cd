@@ -29,16 +29,26 @@ RUN  apt-get update && apt-get install --fix-missing -y \
 
 COPY --from=golang /usr/local/go /usr/local/go
 
-ENV PATH /go/bin:/usr/local/go/bin:$PATH
+ENV PATH /dist:/go/bin:/usr/local/go/bin:$PATH
 ENV GOROOT /usr/local/go
 ENV GOPATH /go
+ENV IS_TEST_TOOLS_IMAGE true
 
 # Install build and test dependencies
+WORKDIR /dep-build
+
 ADD ./hack/tool-versions.sh .
 ADD ./hack/install.sh .
 ADD ./hack/installers installers
 
-RUN ./install.sh ksonnet-linux && \
+COPY ./hack/tools.go .
+COPY go.mod go.mod
+COPY go.sum go.sum
+
+RUN sed -i "s|github.com/argoproj/argo-cd/v2|dep-build|g" go.mod && \
+    go mod tidy && \
+    go mod vendor && \
+    ./install.sh ksonnet-linux && \
     ./install.sh helm2-linux && \
     ./install.sh helm-linux && \
     ./install.sh kubectl-linux && \
@@ -52,7 +62,10 @@ RUN ./install.sh ksonnet-linux && \
     rm -rf /tmp/dl && \
     rm -rf /tmp/helm && \
     rm -rf /tmp/helm2 && \
-    rm -rf /tmp/ks_*
+    rm -rf /tmp/ks_* && \
+    cd / && rm -rf /dep-build
+
+WORKDIR /
 
 # These are required for running end-to-end tests
 COPY ./test/fixture/testrepos/id_rsa.pub /root/.ssh/authorized_keys

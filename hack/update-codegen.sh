@@ -25,7 +25,12 @@ TARGET_SCRIPT=/tmp/generate-groups.sh
 sed -e '/go install/d' ${PROJECT_ROOT}/vendor/k8s.io/code-generator/generate-groups.sh > ${TARGET_SCRIPT}
 
 [ -e ./v2 ] || ln -s . v2
-GOBIN=${PROJECT_ROOT}/dist bash -x ${TARGET_SCRIPT} "deepcopy,client,informer,lister" \
+if [ "${IS_TEST_TOOLS_IMAGE-}" == "true" ]; then
+  export GOBINPATH=/dist
+else
+  export GOBINPATH="${PROJECT_ROOT}/dist"
+fi
+GOBIN=${GOBINPATH} bash -x ${TARGET_SCRIPT} "deepcopy,client,informer,lister" \
   github.com/argoproj/argo-cd/v2/pkg/client github.com/argoproj/argo-cd/v2/pkg/apis \
   "application:v1alpha1" \
   --go-header-file ${PROJECT_ROOT}/hack/custom-boilerplate.go.txt
