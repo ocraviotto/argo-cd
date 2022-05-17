@@ -496,6 +496,13 @@ func (in *ApplicationSpec) DeepCopyInto(out *ApplicationSpec) {
 		*out = new(int64)
 		**out = **in
 	}
+	if in.Sources != nil {
+		in, out := &in.Sources, &out.Sources
+		*out = make([]ApplicationSource, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	return
 }
 
@@ -835,6 +842,13 @@ func (in *ComparedTo) DeepCopyInto(out *ComparedTo) {
 	*out = *in
 	in.Source.DeepCopyInto(&out.Source)
 	out.Destination = in.Destination
+	if in.Sources != nil {
+		in, out := &in.Sources, &out.Sources
+		*out = make([]ApplicationSource, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	return
 }
 
@@ -1960,6 +1974,13 @@ func (in *RevisionHistory) DeepCopyInto(out *RevisionHistory) {
 		in, out := &in.DeployStartedAt, &out.DeployStartedAt
 		*out = (*in).DeepCopy()
 	}
+	if in.Sources != nil {
+		in, out := &in.Sources, &out.Sources
+		*out = make([]ApplicationSource, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	return
 }
 
@@ -2029,6 +2050,13 @@ func (in *SyncOperation) DeepCopyInto(out *SyncOperation) {
 		*out = new(ApplicationSource)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.Sources != nil {
+		in, out := &in.Sources, &out.Sources
+		*out = make([]ApplicationSource, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.Manifests != nil {
 		in, out := &in.Manifests, &out.Manifests
 		*out = make([]string, len(*in))
@@ -2083,6 +2111,13 @@ func (in *SyncOperationResult) DeepCopyInto(out *SyncOperationResult) {
 		}
 	}
 	in.Source.DeepCopyInto(&out.Source)
+	if in.Sources != nil {
+		in, out := &in.Sources, &out.Sources
+		*out = make([]ApplicationSource, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	return
 }
 
