@@ -383,7 +383,6 @@ func ValidatePermissions(ctx context.Context, spec *argoappv1.ApplicationSpec, p
 			})
 		}
 		// Ensure the k8s cluster the app is referencing, is configured in Argo CD
-		log.Printf(spec.Destination.Server)
 		_, err := db.GetCluster(ctx, spec.Destination.Server)
 
 		if err != nil {
@@ -539,7 +538,6 @@ func verifyGenerateManifests(ctx context.Context, repoRes *argoappv1.Repository,
 			Message: errDestinationMissing,
 		})
 	}
-	log.Printf("Reached Here 3")
 	req := apiclient.ManifestRequest{
 		Repo: &argoappv1.Repository{
 			Repo:  source.RepoURL,
@@ -565,7 +563,6 @@ func verifyGenerateManifests(ctx context.Context, repoRes *argoappv1.Repository,
 	req.Repo.CopyCredentialsFromRepo(repoRes)
 	req.Repo.CopySettingsFrom(repoRes)
 
-	log.Printf(strings.Join(req.ApiVersions, " "))
 	// Only check whether we can access the application's path,
 	// and not whether it actually contains any manifests.
 	_, err := repoClient.GenerateManifest(ctx, &req)
