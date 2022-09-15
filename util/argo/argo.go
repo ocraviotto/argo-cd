@@ -365,7 +365,7 @@ func ValidatePermissions(ctx context.Context, spec *argoappv1.ApplicationSpec, p
 			if source.Chart != "" && source.TargetRevision == "" {
 				conditions = append(conditions, argoappv1.ApplicationCondition{
 					Type:    argoappv1.ApplicationConditionInvalidSpecError,
-					Message: "spec.source.targetRevision is required if the manifest source is a helm chart",
+					Message: fmt.Sprintf("source.targetRevision is required if the manifest source is a helm chart for source %s", &source),
 				})
 				return conditions, nil
 			}
@@ -379,6 +379,7 @@ func ValidatePermissions(ctx context.Context, spec *argoappv1.ApplicationSpec, p
 		}
 
 	} else {
+		log.Debugf("Reached Source check %s", &spec.Source)
 		if spec.Source.RepoURL == "" || (spec.Source.Path == "" && spec.Source.Chart == "") {
 			conditions = append(conditions, argoappv1.ApplicationCondition{
 				Type:    argoappv1.ApplicationConditionInvalidSpecError,
@@ -412,14 +413,20 @@ func ValidatePermissions(ctx context.Context, spec *argoappv1.ApplicationSpec, p
 	}
 
 	if spec.Destination.Server != "" {
-		if !proj.IsDestinationPermitted(spec.Destination) {
+		permitted, err := proj.IsDestinationPermitted(spec.Destination, func(project string) ([]*argoappv1.Cluster, error) {
+			return db.GetProjectClusters(ctx, project)
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !permitted {
 			conditions = append(conditions, argoappv1.ApplicationCondition{
 				Type:    argoappv1.ApplicationConditionInvalidSpecError,
 				Message: fmt.Sprintf("application destination {%s %s} is not permitted in project '%s'", spec.Destination.Server, spec.Destination.Namespace, spec.Project),
 			})
 		}
 		// Ensure the k8s cluster the app is referencing, is configured in Argo CD
-		_, err := db.GetCluster(ctx, spec.Destination.Server)
+		_, err = db.GetCluster(ctx, spec.Destination.Server)
 
 		if err != nil {
 			if errStatus, ok := status.FromError(err); ok && errStatus.Code() == codes.NotFound {
@@ -433,44 +440,6 @@ func ValidatePermissions(ctx context.Context, spec *argoappv1.ApplicationSpec, p
 		}
 	} else if spec.Destination.Server == "" {
 		conditions = append(conditions, argoappv1.ApplicationCondition{Type: argoappv1.ApplicationConditionInvalidSpecError, Message: errDestinationMissing})
-	}
-	return conditions, nil
-}
-
-func validateSource(source *argoappv1.ApplicationSource, conditions []argoappv1.ApplicationCondition, proj *argoappv1.AppProject, hasMultipleSources bool) ([]argoappv1.ApplicationCondition, error) {
-
-	if hasMultipleSources {
-		// We need to check if source in multiple sources has atleast Path or Chart field for generating Manifests or Ref field for using as reference source
-		if source.RepoURL == "" || (source.Path == "" && source.Chart == "" && source.Ref == "") {
-			conditions = append(conditions, argoappv1.ApplicationCondition{
-				Type:    argoappv1.ApplicationConditionInvalidSpecError,
-				Message: fmt.Sprintf("source.repoURL, either source.path or source.chart or source.ref are missing for source %s", source),
-			})
-			return conditions, nil
-		}
-	} else {
-		if source.RepoURL == "" || (source.Path == "" && source.Chart == "") {
-			conditions = append(conditions, argoappv1.ApplicationCondition{
-				Type:    argoappv1.ApplicationConditionInvalidSpecError,
-				Message: "spec.source.repoURL and spec.source.path either spec.source.chart are required",
-			})
-			return conditions, nil
-		}
-	}
-
-	if source.Chart != "" && source.TargetRevision == "" {
-		conditions = append(conditions, argoappv1.ApplicationCondition{
-			Type:    argoappv1.ApplicationConditionInvalidSpecError,
-			Message: "spec.source.targetRevision is required if the manifest source is a helm chart",
-		})
-		return conditions, nil
-	}
-
-	if !proj.IsSourcePermitted(*source) {
-		conditions = append(conditions, argoappv1.ApplicationCondition{
-			Type:    argoappv1.ApplicationConditionInvalidSpecError,
-			Message: fmt.Sprintf("application repo %s is not permitted in project '%s'", source.RepoURL, proj),
-		})
 	}
 	return conditions, nil
 }

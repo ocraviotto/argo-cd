@@ -577,6 +577,11 @@ func (in *ApplicationStatus) DeepCopyInto(out *ApplicationStatus) {
 		in, out := &in.ObservedAt, &out.ObservedAt
 		*out = (*in).DeepCopy()
 	}
+	if in.SourceType != nil {
+		in, out := &in.SourceType, &out.SourceType
+		*out = make([]ApplicationSourceType, len(*in))
+		copy(*out, *in)
+	}
 	in.Summary.DeepCopyInto(&out.Summary)
 	return
 }
@@ -2140,6 +2145,11 @@ func (in *SyncOperationResult) DeepCopyInto(out *SyncOperationResult) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.Revisions != nil {
+		in, out := &in.Revisions, &out.Revisions
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 
@@ -2224,6 +2234,11 @@ func (in *SyncPolicyAutomated) DeepCopy() *SyncPolicyAutomated {
 func (in *SyncStatus) DeepCopyInto(out *SyncStatus) {
 	*out = *in
 	in.ComparedTo.DeepCopyInto(&out.ComparedTo)
+	if in.Revisions != nil {
+		in, out := &in.Revisions, &out.Revisions
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 

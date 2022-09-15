@@ -455,7 +455,10 @@ func (ctrl *ApplicationController) getResourceTree(a *appv1.Application, managed
 			})
 		} else {
 			err := ctrl.stateCache.IterateHierarchy(a.Spec.Destination.Server, kube.GetResourceKey(live), func(child appv1.ResourceNode, appName string) bool {
-				if !proj.IsResourcePermitted(schema.GroupKind{Group: child.ResourceRef.Group, Kind: child.ResourceRef.Kind}, child.Namespace, a.Spec.Destination) {
+				permitted, _ := proj.IsResourcePermitted(schema.GroupKind{Group: child.ResourceRef.Group, Kind: child.ResourceRef.Kind}, child.Namespace, a.Spec.Destination, func(project string) ([]*appv1.Cluster, error) {
+					return ctrl.db.GetProjectClusters(context.TODO(), project)
+				})
+				if !permitted {
 					return false
 				}
 				nodes = append(nodes, child)
@@ -477,7 +480,16 @@ func (ctrl *ApplicationController) getResourceTree(a *appv1.Application, managed
 						belongToAnotherApp = true
 					}
 				}
-				if belongToAnotherApp || !proj.IsResourcePermitted(schema.GroupKind{Group: child.ResourceRef.Group, Kind: child.ResourceRef.Kind}, child.Namespace, a.Spec.Destination) {
+
+				if belongToAnotherApp {
+					return false
+				}
+
+				permitted, _ := proj.IsResourcePermitted(schema.GroupKind{Group: child.ResourceRef.Group, Kind: child.ResourceRef.Kind}, child.Namespace, a.Spec.Destination, func(project string) ([]*appv1.Cluster, error) {
+					return ctrl.db.GetProjectClusters(context.TODO(), project)
+				})
+
+				if !permitted {
 					return false
 				}
 				orphanedNodes = append(orphanedNodes, child)
@@ -798,7 +810,7 @@ func (ctrl *ApplicationController) processAppOperationQueueItem() (processNext b
 	app := origApp.DeepCopy()
 
 	if app.Operation != nil {
-		// If we get here, we are about process an operation but we cannot rely on informer since it might has stale data.
+		// If we get here, we are about to process an operation, but we cannot rely on informer since it might have stale data.
 		// So always retrieve the latest version to ensure it is not stale to avoid unnecessary syncing.
 		// We cannot rely on informer since applications might be updated by both application controller and api server.
 		freshApp, err := ctrl.applicationClientset.ArgoprojV1alpha1().Applications(app.ObjectMeta.Namespace).Get(context.Background(), app.ObjectMeta.Name, metav1.GetOptions{})
@@ -812,7 +824,9 @@ func (ctrl *ApplicationController) processAppOperationQueueItem() (processNext b
 	if app.Operation != nil {
 		ctrl.processRequestedAppOperation(app)
 	} else if app.DeletionTimestamp != nil && app.CascadedDeletion() {
-		_, err = ctrl.finalizeApplicationDeletion(app)
+		_, err = ctrl.finalizeApplicationDeletion(app, func(project string) ([]*appv1.Cluster, error) {
+			return ctrl.db.GetProjectClusters(context.Background(), project)
+		})
 		if err != nil {
 			ctrl.setAppCondition(app, appv1.ApplicationCondition{
 				Type:    appv1.ApplicationConditionDeletionError,
@@ -926,21 +940,27 @@ func (ctrl *ApplicationController) shouldBeDeleted(app *appv1.Application, obj *
 	return !kube.IsCRD(obj) && !isSelfReferencedApp(app, kube.GetObjectRef(obj))
 }
 
-func (ctrl *ApplicationController) getPermittedAppLiveObjects(app *appv1.Application, proj *appv1.AppProject) (map[kube.ResourceKey]*unstructured.Unstructured, error) {
+func (ctrl *ApplicationController) getPermittedAppLiveObjects(app *appv1.Application, proj *appv1.AppProject, projectClusters func(project string) ([]*appv1.Cluster, error)) (map[kube.ResourceKey]*unstructured.Unstructured, error) {
 	objsMap, err := ctrl.stateCache.GetManagedLiveObjs(app, []*unstructured.Unstructured{})
 	if err != nil {
 		return nil, err
 	}
 	// Don't delete live resources which are not permitted in the app project
 	for k, v := range objsMap {
-		if !proj.IsLiveResourcePermitted(v, app.Spec.Destination.Server, app.Spec.Destination.Name) {
+		permitted, err := proj.IsLiveResourcePermitted(v, app.Spec.Destination.Server, app.Spec.Destination.Name, projectClusters)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if !permitted {
 			delete(objsMap, k)
 		}
 	}
 	return objsMap, nil
 }
 
-func (ctrl *ApplicationController) finalizeApplicationDeletion(app *appv1.Application) ([]*unstructured.Unstructured, error) {
+func (ctrl *ApplicationController) finalizeApplicationDeletion(app *appv1.Application, projectClusters func(project string) ([]*appv1.Cluster, error)) ([]*unstructured.Unstructured, error) {
 	logCtx := log.WithField("application", app.QualifiedName())
 	logCtx.Infof("Deleting resources")
 	// Get refreshed application info, since informer app copy might be stale
@@ -981,7 +1001,7 @@ func (ctrl *ApplicationController) finalizeApplicationDeletion(app *appv1.Applic
 	if validDestination {
 		// ApplicationDestination points to a valid cluster, so we may clean up the live objects
 
-		objsMap, err := ctrl.getPermittedAppLiveObjects(app, proj)
+		objsMap, err := ctrl.getPermittedAppLiveObjects(app, proj, projectClusters)
 		if err != nil {
 			return nil, err
 		}
@@ -1016,7 +1036,7 @@ func (ctrl *ApplicationController) finalizeApplicationDeletion(app *appv1.Applic
 			return objs, err
 		}
 
-		objsMap, err = ctrl.getPermittedAppLiveObjects(app, proj)
+		objsMap, err = ctrl.getPermittedAppLiveObjects(app, proj, projectClusters)
 		if err != nil {
 			return nil, err
 		}
@@ -1368,15 +1388,39 @@ func (ctrl *ApplicationController) processAppRefreshQueueItem() (processNext boo
 		localManifests = opState.Operation.Sync.Manifests
 	}
 
-	revision := app.Spec.Source.TargetRevision
-	if comparisonLevel == CompareWithRecent {
-		revision = app.Status.Sync.Revision
+	revisions := make([]string, 0)
+	sources := make([]appv1.ApplicationSource, 0)
+	sourceMap := make(map[string]int)
+
+	if app.Spec.Sources != nil && len(app.Spec.Sources) > 0 {
+		for _, source := range app.Spec.Sources {
+			// filter out repeated sources having same repoUrl
+			if i, ok := sourceMap[source.RepoURL]; ok {
+				sources = append(sources[:i], sources[i+1:]...)
+				revisions = append(revisions[:i], revisions[i+1:]...)
+			}
+			sourceMap[source.RepoURL] = len(sources)
+			sources = append(sources, source)
+			revisions = append(revisions, source.TargetRevision)
+		}
+		if comparisonLevel == CompareWithRecent {
+			revisions = app.Status.Sync.Revisions
+		}
+	} else {
+		revision := app.Spec.Source.TargetRevision
+		if comparisonLevel == CompareWithRecent {
+			revision = app.Status.Sync.Revision
+		}
+		revisions = append(revisions, revision)
+		sources = append(sources, app.Spec.Source)
 	}
 	now := metav1.Now()
+	hasMultipleSources := app.Spec.Sources != nil && len(app.Spec.Sources) > 0
 
-	compareResult := ctrl.appStateManager.CompareAppState(app, project, revision, app.Spec.Source, app.Spec.Sources,
+	compareResult := ctrl.appStateManager.CompareAppState(app, project, revisions, sources,
 		refreshType == appv1.RefreshTypeHard,
-		comparisonLevel == CompareWithLatestForceResolve, localManifests)
+		comparisonLevel == CompareWithLatestForceResolve, localManifests, hasMultipleSources)
+
 	for k, v := range compareResult.timings {
 		logCtx = logCtx.WithField(k, v.Milliseconds())
 	}

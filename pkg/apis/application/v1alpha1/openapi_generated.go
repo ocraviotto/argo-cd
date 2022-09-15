@@ -392,6 +392,13 @@ func schema_pkg_apis_application_v1alpha1_AppProjectSpec(ref common.ReferenceCal
 							},
 						},
 					},
+					"permitOnlyProjectScopedClusters": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PermitOnlyProjectScopedClusters determines whether destinations can only reference clusters which are project-scoped",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},
@@ -1186,8 +1193,16 @@ func schema_pkg_apis_application_v1alpha1_ApplicationStatus(ref common.Reference
 					"sourceType": {
 						SchemaProps: spec.SchemaProps{
 							Description: "SourceType specifies the type of this application",
-							Type:        []string{"string"},
-							Format:      "",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: "",
+										Type:    []string{"string"},
+										Format:  "",
+									},
+								},
+							},
 						},
 					},
 					"summary": {
@@ -4366,6 +4381,21 @@ func schema_pkg_apis_application_v1alpha1_SyncOperationResult(ref common.Referen
 							},
 						},
 					},
+					"revisions": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Revisions holds the revision this sync operation was performed for respective indexed source in sources field",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: "",
+										Type:    []string{"string"},
+										Format:  "",
+									},
+								},
+							},
+						},
+					},
 				},
 				Required: []string{"revision"},
 			},
@@ -4478,6 +4508,21 @@ func schema_pkg_apis_application_v1alpha1_SyncStatus(ref common.ReferenceCallbac
 							Description: "Revision contains information about the revision the comparison has been performed to",
 							Type:        []string{"string"},
 							Format:      "",
+						},
+					},
+					"revisions": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Revisions contains information about the revisions of multiple sources the comparison has been performed to",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: "",
+										Type:    []string{"string"},
+										Format:  "",
+									},
+								},
+							},
 						},
 					},
 				},
