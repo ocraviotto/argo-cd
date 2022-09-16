@@ -2142,7 +2142,7 @@ func TestDisableManifestGeneration(t *testing.T) {
 			time.Sleep(1 * time.Second)
 		}).
 		And(func(app *Application) {
-			assert.Equal(t, app.Status.SourceType, ApplicationSourceTypeDirectory)
+			assert.Equal(t, app.Status.SourceType, []ApplicationSourceType{ApplicationSourceTypeDirectory})
 		})
 }
 
