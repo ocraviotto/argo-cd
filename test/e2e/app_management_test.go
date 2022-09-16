@@ -2128,7 +2128,7 @@ func TestDisableManifestGeneration(t *testing.T) {
 		Refresh(RefreshTypeHard).
 		Then().
 		And(func(app *Application) {
-			assert.Equal(t, app.Status.SourceType, ApplicationSourceTypeKustomize)
+			assert.Equal(t, app.Status.SourceType, []ApplicationSourceType{ApplicationSourceTypeKustomize})
 		}).
 		When().
 		And(func() {
