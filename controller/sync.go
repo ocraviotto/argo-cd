@@ -333,7 +333,6 @@ func (m *appStateManager) SyncAppState(app *v1alpha1.Application, state *v1alpha
 
 	logEntry.WithField("duration", time.Since(start)).Info("sync/terminate complete")
 
-	logEntry.WithField("duration", time.Since(start)).Infof("revisions %s", compareResult.syncStatus.Revisions)
 	if !syncOp.DryRun && len(syncOp.Resources) == 0 && state.Phase.Successful() {
 		err := m.persistRevisionHistory(app, revisions, sources, state.StartedAt)
 		if err != nil {

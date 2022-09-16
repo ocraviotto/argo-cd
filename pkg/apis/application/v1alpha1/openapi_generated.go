@@ -687,13 +687,6 @@ func schema_pkg_apis_application_v1alpha1_ApplicationSet(ref common.ReferenceCal
 							Ref:     ref("github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1.ApplicationSetStatus"),
 						},
 					},
-					"ref": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Ref is reference to another source within sources field",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
 				},
 				Required: []string{"metadata", "spec"},
 			},
@@ -1042,20 +1035,6 @@ func schema_pkg_apis_application_v1alpha1_ApplicationSetTemplate(ref common.Refe
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
 							Ref:     ref("github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1.ApplicationSpec"),
-						},
-					},
-					"sources": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Sources is a reference to the location of the application's manifests or chart",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1.ApplicationSource"),
-									},
-								},
-							},
 						},
 					},
 				},
@@ -1829,20 +1808,6 @@ func schema_pkg_apis_application_v1alpha1_ApplicationSummary(ref common.Referenc
 										Default: "",
 										Type:    []string{"string"},
 										Format:  "",
-									},
-								},
-							},
-						},
-					},
-					"sources": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Sources is a reference to the application's multiple sources used for comparison",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1.ApplicationSource"),
 									},
 								},
 							},
@@ -5875,20 +5840,6 @@ func schema_pkg_apis_application_v1alpha1_SCMProviderGeneratorGithub(ref common.
 							Description: "Scan all branches instead of just the default branch.",
 							Type:        []string{"boolean"},
 							Format:      "",
-						},
-					},
-					"sources": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Source is a reference to the application source used for the sync operation",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1.ApplicationSource"),
-									},
-								},
-							},
 						},
 					},
 				},
