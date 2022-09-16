@@ -352,7 +352,7 @@ func (m *appStateManager) CompareAppState(app *v1alpha1.Application, project *ap
 		}
 		return &comparisonResult{
 			syncStatus: &v1alpha1.SyncStatus{
-				ComparedTo: appv1.ComparedTo{Source: *source, Destination: app.Spec.Destination, Sources: sources},
+				ComparedTo: appv1.ComparedTo{Source: sources[0], Destination: app.Spec.Destination, Sources: sources},
 				Status:     appv1.SyncStatusCodeUnknown,
 			},
 			healthStatus: &appv1.HealthStatus{Status: health.HealthStatusUnknown},
@@ -438,6 +438,8 @@ func (m *appStateManager) CompareAppState(app *v1alpha1.Application, project *ap
 		failedToLoadObjs = true
 	}
 
+	logCtx.Debugf("Retrieved lived manifests")
+
 	// filter out all resources which are not permitted in the application project
 	for k, v := range liveObjByKey {
 		permitted, err := project.IsLiveResourcePermitted(v, app.Spec.Destination.Server, app.Spec.Destination.Name, func(project string) ([]*appv1.Cluster, error) {
@@ -480,6 +482,10 @@ func (m *appStateManager) CompareAppState(app *v1alpha1.Application, project *ap
 		compareOptions = settings.GetDefaultDiffOptions()
 	}
 	manifestRevisions := make([]string, 0)
+
+	for _, manifestInfo := range manifestInfoMap {
+		manifestRevisions = append(manifestRevisions, manifestInfo.Revision)
+	}
 
 	logCtx.Infof("manifestInfoMap %s", manifestInfoMap)
 	for _, manifestInfo := range manifestInfoMap {
@@ -616,14 +622,20 @@ func (m *appStateManager) CompareAppState(app *v1alpha1.Application, project *ap
 	if failedToLoadObjs {
 		syncCode = v1alpha1.SyncStatusCodeUnknown
 	}
+	var revision string
 
+	if !hasMultipleSources && len(manifestRevisions) > 0 {
+		revision = manifestRevisions[0]
+	}
 	syncStatus := v1alpha1.SyncStatus{
 		ComparedTo: appv1.ComparedTo{
 			Source:      app.Spec.Source,
 			Destination: app.Spec.Destination,
 			Sources:     sources,
 		},
-		Status: syncCode,
+		Status:    syncCode,
+		Revisions: manifestRevisions,
+		Revision:  revision,
 	}
 
 	ts.AddCheckpoint("sync_ms")
