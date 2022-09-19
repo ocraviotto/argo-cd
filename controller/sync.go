@@ -74,6 +74,7 @@ func (m *appStateManager) SyncAppState(app *v1alpha1.Application, state *v1alpha
 		return
 	}
 	syncOp = *state.Operation.Sync
+	hasMultipleSources := app.Spec.Sources != nil && len(app.Spec.Sources) > 0
 
 	// validates if it should fail the sync if it finds shared resources
 	hasSharedResource, sharedResourceMessage := hasSharedResourceCondition(app)
@@ -86,7 +87,7 @@ func (m *appStateManager) SyncAppState(app *v1alpha1.Application, state *v1alpha
 
 	if syncOp.Source == nil || (syncOp.Sources != nil && len(syncOp.Sources) > 0) {
 		// normal sync case (where source is taken from app.spec.sources)
-		if app.Spec.Sources != nil && len(app.Spec.Sources) > 0 {
+		if hasMultipleSources {
 			sources = app.Spec.Sources
 		} else {
 			// normal sync case (where source is taken from app.spec.source)
@@ -95,7 +96,7 @@ func (m *appStateManager) SyncAppState(app *v1alpha1.Application, state *v1alpha
 		}
 	} else {
 		// rollback case
-		if app.Spec.Sources != nil && len(app.Spec.Sources) > 0 {
+		if hasMultipleSources {
 			sources = state.Operation.Sync.Sources
 		} else {
 			source = *state.Operation.Sync.Source
@@ -135,17 +136,12 @@ func (m *appStateManager) SyncAppState(app *v1alpha1.Application, state *v1alpha
 		return
 	}
 
-	if !(app.Spec.Sources != nil && len(app.Spec.Sources) > 0) {
-		revisions = append(revisions, revision)
-	} else {
-		revisions = syncRes.Revisions
-	}
+	revisions = append(revisions, revision)
 
 	if len(sources) == 0 {
 		sources = append(sources, source)
 	}
 
-	hasMultipleSources := app.Spec.Sources != nil && len(app.Spec.Sources) > 0
 	compareResult := m.CompareAppState(app, proj, revisions, sources, false, true, syncOp.Manifests, hasMultipleSources)
 	// We now have a concrete commit SHA. Save this in the sync result revision so that we remember
 	// what we should be syncing to when resuming operations.
