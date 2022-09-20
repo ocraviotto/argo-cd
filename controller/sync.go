@@ -136,10 +136,23 @@ func (m *appStateManager) SyncAppState(app *v1alpha1.Application, state *v1alpha
 		return
 	}
 
-	revisions = append(revisions, revision)
+	if !(hasMultipleSources) {
+		revisions = append(revisions, revision)
+	} else {
+		revisions = syncRes.Revisions
+	}
 
 	if len(sources) == 0 {
 		sources = append(sources, source)
+	}
+
+	if len(revisions) < len(sources) {
+		for {
+			revisions = append(revisions, "")
+			if len(revisions) == len(sources) {
+				break
+			}
+		}
 	}
 
 	compareResult := m.CompareAppState(app, proj, revisions, sources, false, true, syncOp.Manifests, hasMultipleSources)
@@ -333,7 +346,7 @@ func (m *appStateManager) SyncAppState(app *v1alpha1.Application, state *v1alpha
 		compareResult.syncStatus.Revisions = append(compareResult.syncStatus.Revisions, compareResult.syncStatus.Revision)
 	}
 
-	if !syncOp.DryRun && len(syncOp.Resources) == 0 && state.Phase.Successful() {
+	if !syncOp.DryRun && len(syncOp.Resources) == 0 && state.Phase.Successful() && (len(compareResult.syncStatus.Revisions) == len(compareResult.syncStatus.ComparedTo.Sources)) {
 		err := m.persistRevisionHistory(app, compareResult.syncStatus.Revisions, compareResult.syncStatus.ComparedTo.Sources, state.StartedAt)
 		if err != nil {
 			state.Phase = common.OperationError
