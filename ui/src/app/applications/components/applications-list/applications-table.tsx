@@ -6,7 +6,7 @@ import {Consumer, Context} from '../../../shared/context';
 import * as models from '../../../shared/models';
 import {ApplicationURLs} from '../application-urls';
 import * as AppUtils from '../utils';
-import {OperationState} from '../utils';
+import {getAppDefaultSource, OperationState} from '../utils';
 import {ApplicationsLabels} from './applications-labels';
 import {ApplicationsSource} from './applications-source';
 import {services} from '../../../shared/services';
@@ -91,7 +91,11 @@ export const ApplicationsTable = (props: {
                                                 <div className='row'>
                                                     <div className=' columns small-2' />
                                                     <div className='show-for-xxlarge columns small-4'>Name:</div>
-                                                    <div className='columns small-12 xxlarge-6'>{app.metadata.name}</div>
+                                                    <div className='columns small-12 xxlarge-6'>
+                                                        <Tooltip content={app.metadata.name}>
+                                                            <span>{app.metadata.name}</span>
+                                                        </Tooltip>
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -100,7 +104,7 @@ export const ApplicationsTable = (props: {
                                                     <div className='show-for-xxlarge columns small-2'>Source:</div>
                                                     <div className='columns small-12 xxlarge-10 applications-table-source' style={{position: 'relative'}}>
                                                         <div className='applications-table-source__link'>
-                                                            <ApplicationsSource source={app.spec.source} />
+                                                            <ApplicationsSource source={getAppDefaultSource(app)} />
                                                         </div>
                                                         <div className='applications-table-source__labels'>
                                                             <ApplicationsLabels app={app} />

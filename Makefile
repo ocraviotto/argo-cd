@@ -181,6 +181,10 @@ gogen: ensure-gopath
 	export GO111MODULE=off
 	go generate ./util/argo/...
 
+.PHONY: protogen-in-client
+protogen-in-client: test-tools-image
+	$(call run-in-test-client,make protogen)
+
 .PHONY: protogen
 protogen: ensure-gopath mod-vendor-local
 	export GO111MODULE=off

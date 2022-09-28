@@ -68,13 +68,14 @@ func (m *appStateManager) SyncAppState(app *v1alpha1.Application, state *v1alpha
 	var sources []v1alpha1.ApplicationSource
 	revisions := make([]string, 0)
 
+	hasMultipleSources := app.Spec.Sources != nil && len(app.Spec.Sources) > 0
+
 	if state.Operation.Sync == nil {
 		state.Phase = common.OperationFailed
 		state.Message = "Invalid operation request: no operation specified"
 		return
 	}
 	syncOp = *state.Operation.Sync
-	hasMultipleSources := app.Spec.Sources != nil && len(app.Spec.Sources) > 0
 
 	// validates if it should fail the sync if it finds shared resources
 	hasSharedResource, sharedResourceMessage := hasSharedResourceCondition(app)
@@ -114,7 +115,7 @@ func (m *appStateManager) SyncAppState(app *v1alpha1.Application, state *v1alpha
 		// status.operationState.syncResult.source. must be set properly since auto-sync relies
 		// on this information to decide if it should sync (if source is different than the last
 		// sync attempt)
-		if len(sources) > 0 {
+		if hasMultipleSources {
 			syncRes.Sources = sources
 		} else {
 			syncRes.Source = source
@@ -122,11 +123,17 @@ func (m *appStateManager) SyncAppState(app *v1alpha1.Application, state *v1alpha
 		state.SyncResult = syncRes
 	}
 
-	if revision == "" {
-		// if we get here, it means we did not remember a commit SHA which we should be syncing to.
-		// This typically indicates we are just about to begin a brand new sync/rollback operation.
-		// Take the value in the requested operation. We will resolve this to a SHA later.
-		revision = syncOp.Revision
+	// if we get here, it means we did not remember a commit SHA which we should be syncing to.
+	// This typically indicates we are just about to begin a brand new sync/rollback operation.
+	// Take the value in the requested operation. We will resolve this to a SHA later.
+	if hasMultipleSources {
+		if len(revisions) != len(sources) {
+			revisions = syncOp.Revisions
+		}
+	} else {
+		if revision == "" {
+			revision = syncOp.Revision
+		}
 	}
 
 	proj, err := argo.GetAppProject(app, listersv1alpha1.NewAppProjectLister(m.projInformer.GetIndexer()), m.namespace, m.settingsMgr, m.db, context.TODO())
@@ -137,22 +144,17 @@ func (m *appStateManager) SyncAppState(app *v1alpha1.Application, state *v1alpha
 	}
 
 	if !(hasMultipleSources) {
+		// Append revision of
 		revisions = append(revisions, revision)
 	} else {
 		revisions = syncRes.Revisions
 	}
 
-	if len(sources) == 0 {
+	if !hasMultipleSources {
+		sources = make([]v1alpha1.ApplicationSource, 0)
 		sources = append(sources, source)
-	}
-
-	if len(revisions) < len(sources) {
-		for {
-			revisions = append(revisions, "")
-			if len(revisions) == len(sources) {
-				break
-			}
-		}
+		revisions = make([]string, 0)
+		revisions = append(revisions, revision)
 	}
 
 	compareResult := m.CompareAppState(app, proj, revisions, sources, false, true, syncOp.Manifests, hasMultipleSources)
@@ -346,8 +348,8 @@ func (m *appStateManager) SyncAppState(app *v1alpha1.Application, state *v1alpha
 		compareResult.syncStatus.Revisions = append(compareResult.syncStatus.Revisions, compareResult.syncStatus.Revision)
 	}
 
-	if !syncOp.DryRun && len(syncOp.Resources) == 0 && state.Phase.Successful() && (len(compareResult.syncStatus.Revisions) == len(compareResult.syncStatus.ComparedTo.Sources)) {
-		err := m.persistRevisionHistory(app, compareResult.syncStatus.Revisions, compareResult.syncStatus.ComparedTo.Sources, state.StartedAt)
+	if !syncOp.DryRun && len(syncOp.Resources) == 0 && state.Phase.Successful() {
+		err := m.persistRevisionHistory(app, compareResult.syncStatus.Revision, source, compareResult.syncStatus.Revisions, compareResult.syncStatus.ComparedTo.Sources, hasMultipleSources, state.StartedAt)
 		if err != nil {
 			state.Phase = common.OperationError
 			state.Message = fmt.Sprintf("failed to record sync to history: %v", err)

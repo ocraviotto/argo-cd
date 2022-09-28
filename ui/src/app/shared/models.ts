@@ -249,6 +249,7 @@ export interface Info {
 export interface ApplicationSpec {
     project: string;
     source: ApplicationSource;
+    sources: ApplicationSource[];
     destination: ApplicationDestination;
     syncPolicy?: SyncPolicy;
     ignoreDifferences?: ResourceIgnoreDifferences[];
@@ -272,6 +273,8 @@ export interface RevisionHistory {
     id: number;
     revision: string;
     source: ApplicationSource;
+    revisions: string[];
+    sources: ApplicationSource[];
     deployStartedAt: models.Time;
     deployedAt: models.Time;
 }
@@ -376,6 +379,7 @@ export interface SyncStatus {
     comparedTo: ApplicationSource;
     status: SyncStatusCode;
     revision: string;
+    revisions: string[];
 }
 
 export interface ApplicationCondition {

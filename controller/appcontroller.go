@@ -1392,10 +1392,13 @@ func (ctrl *ApplicationController) processAppRefreshQueueItem() (processNext boo
 	sources := make([]appv1.ApplicationSource, 0)
 	sourceMap := make(map[string]int)
 
+	// If we have multiple sources, we use all the sources under `sources` field and ignore source under `source` field.
+	// else we use the source under the source field.
 	if app.Spec.Sources != nil && len(app.Spec.Sources) > 0 {
 		for _, source := range app.Spec.Sources {
 			// filter out repeated sources having same repoUrl
 			if i, ok := sourceMap[source.RepoURL]; ok {
+				logCtx.Infof("Replacing source %s with latest source %s in the list of sources", sources[i], source)
 				sources = append(sources[:i], sources[i+1:]...)
 				revisions = append(revisions[:i], revisions[i+1:]...)
 			}
@@ -1461,6 +1464,7 @@ func (ctrl *ApplicationController) processAppRefreshQueueItem() (processNext boo
 		return resourceStatusKey(app.Status.Resources[i]) < resourceStatusKey(app.Status.Resources[j])
 	})
 	app.Status.SourceType = compareResult.appSourceType
+	app.Status.SourceTypes = compareResult.appSourceTypes
 	ctrl.persistAppStatus(origApp, &app.Status)
 	return
 }
@@ -1639,6 +1643,7 @@ func (ctrl *ApplicationController) autoSync(app *appv1.Application, syncStatus *
 		return nil
 	}
 
+	hasMultipleSources := app.Spec.Sources != nil && len(app.Spec.Sources) > 0
 	if !app.Spec.SyncPolicy.Automated.Prune {
 		requirePruneOnly := true
 		for _, r := range resources {
@@ -1654,13 +1659,15 @@ func (ctrl *ApplicationController) autoSync(app *appv1.Application, syncStatus *
 	}
 
 	desiredCommitSHA := syncStatus.Revision
-	alreadyAttempted, attemptPhase := alreadyAttemptedSync(app, desiredCommitSHA)
+	desiredCommitSHAsMS := syncStatus.Revisions
+	alreadyAttempted, attemptPhase := alreadyAttemptedSync(app, desiredCommitSHA, desiredCommitSHAsMS, hasMultipleSources)
 	selfHeal := app.Spec.SyncPolicy.Automated.SelfHeal
 	op := appv1.Operation{
 		Sync: &appv1.SyncOperation{
 			Revision:    desiredCommitSHA,
 			Prune:       app.Spec.SyncPolicy.Automated.Prune,
 			SyncOptions: app.Spec.SyncPolicy.SyncOptions,
+			Revisions:   desiredCommitSHAsMS,
 		},
 		InitiatedBy: appv1.OperationInitiator{Automated: true},
 		Retry:       appv1.RetryStrategy{Limit: 5},
@@ -1726,12 +1733,18 @@ func (ctrl *ApplicationController) autoSync(app *appv1.Application, syncStatus *
 
 // alreadyAttemptedSync returns whether or not the most recent sync was performed against the
 // commitSHA and with the same app source config which are currently set in the app
-func alreadyAttemptedSync(app *appv1.Application, commitSHA string) (bool, synccommon.OperationPhase) {
+func alreadyAttemptedSync(app *appv1.Application, commitSHA string, commitSHAsMS []string, hasMultipleSources bool) (bool, synccommon.OperationPhase) {
 	if app.Status.OperationState == nil || app.Status.OperationState.Operation.Sync == nil || app.Status.OperationState.SyncResult == nil {
 		return false, ""
 	}
-	if app.Status.OperationState.SyncResult.Revision != commitSHA {
-		return false, ""
+	if hasMultipleSources {
+		if reflect.DeepEqual(app.Status.OperationState.SyncResult.Revisions, commitSHAsMS) {
+			return false, ""
+		}
+	} else {
+		if app.Status.OperationState.SyncResult.Revision != commitSHA {
+			return false, ""
+		}
 	}
 
 	if app.Spec.Sources != nil && len(app.Spec.Sources) > 0 {
