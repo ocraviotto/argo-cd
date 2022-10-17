@@ -14,6 +14,7 @@ import (
 	hookutil "github.com/argoproj/gitops-engine/pkg/sync/hook"
 	"github.com/argoproj/gitops-engine/pkg/sync/ignore"
 	resourceutil "github.com/argoproj/gitops-engine/pkg/sync/resource"
+	"github.com/argoproj/gitops-engine/pkg/sync/syncwaves"
 	kubeutil "github.com/argoproj/gitops-engine/pkg/utils/kube"
 	log "github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -386,6 +387,15 @@ func (m *appStateManager) CompareAppState(app *v1alpha1.Application, project *ap
 	var manifestInfoMap map[*v1alpha1.ApplicationSource]*apiclient.ManifestResponse
 
 	if len(localManifests) == 0 {
+		// If the length of revisions is not same as the length of sources,
+		// we take the revisions from the sources directly for all the sources.
+		if len(revisions) != len(sources) {
+			revisions = make([]string, 0)
+			for _, source := range sources {
+				revisions = append(revisions, source.TargetRevision)
+			}
+		}
+
 		targetObjs, manifestInfoMap, err = m.getRepoObjs(app, sources, appLabelKey, revisions, noCache, noRevisionCache, verifySignature, project)
 		if err != nil {
 			targetObjs = make([]*unstructured.Unstructured, 0)
@@ -497,7 +507,7 @@ func (m *appStateManager) CompareAppState(app *v1alpha1.Application, project *ap
 
 	// restore comparison using cached diff result if previous comparison was performed for the same revision
 	revisionChanged := len(manifestInfoMap) != len(sources) || !reflect.DeepEqual(app.Status.Sync.Revisions, manifestRevisions)
-	specChanged := !reflect.DeepEqual(app.Status.Sync.ComparedTo, appv1.ComparedTo{Source: app.Spec.Source, Destination: app.Spec.Destination, Sources: sources})
+	specChanged := !reflect.DeepEqual(app.Status.Sync.ComparedTo, appv1.ComparedTo{Source: app.Spec.GetSource(), Destination: app.Spec.Destination, Sources: sources})
 
 	_, refreshRequested := app.IsRefreshRequested()
 	noCache = noCache || refreshRequested || app.Status.Expired(m.statusRefreshTimeout) || specChanged || revisionChanged
@@ -560,6 +570,9 @@ func (m *appStateManager) CompareAppState(app *v1alpha1.Application, project *ap
 			Group:           gvk.Group,
 			Hook:            hookutil.IsHook(obj),
 			RequiresPruning: targetObj == nil && liveObj != nil && isSelfReferencedObj,
+		}
+		if targetObj != nil {
+			resState.SyncWave = int64(syncwaves.Wave(targetObj))
 		}
 
 		var diffResult diff.DiffResult
@@ -643,7 +656,7 @@ func (m *appStateManager) CompareAppState(app *v1alpha1.Application, project *ap
 		syncStatus = v1alpha1.SyncStatus{
 			ComparedTo: appv1.ComparedTo{
 				Destination: app.Spec.Destination,
-				Source:      app.Spec.Source,
+				Source:      app.Spec.GetSource(),
 			},
 			Status:   syncCode,
 			Revision: revision,

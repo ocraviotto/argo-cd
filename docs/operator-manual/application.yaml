@@ -99,10 +99,12 @@ spec:
           value: bar
       # Exclude contains a glob pattern to match paths against that should be explicitly excluded from being used during
       # manifest generation. This takes precedence over the `include` field.
-      exclude: string
+      # To match multiple patterns, wrap the patterns in {} and separate them with commas. For example: '{config.yaml,env-use2/*}'
+      exclude: 'config.yaml'
       # Include contains a glob pattern to match paths against that should be explicitly included during manifest
       # generation. If this field is set, only matching manifests will be included.
-      include: string
+      # To match multiple patterns, wrap the patterns in {} and separate them with commas. For example: '{*.yml,*.yaml}'
+      include: '*.yaml'
 
     # plugin specific config
     plugin:
@@ -114,6 +116,13 @@ spec:
       env:
         - name: FOO
           value: bar
+  
+  # Sources field specifies the list of sources for the application
+  sources:
+    - repoURL: https://github.com/argoproj/argocd-example-apps.git  # Can point to either a Helm chart repo or a git repo.
+      targetRevision: HEAD  # For Helm, this refers to the chart version.
+      path: guestbook  # This has no meaning for Helm charts pulled directly from a Helm repo instead of git.
+      ref: my-repo  # For Helm, acts as a reference to this source for fetching values files from this source. Has no meaning when under `source` field
 
   # Destination cluster and namespace to deploy the application
   destination:
