@@ -1024,6 +1024,18 @@ func GenerateManifests(ctx context.Context, appPath, repoRoot, revision string, 
 
 	resourceTracking := argo.NewResourceTracking()
 
+	if q.ApplicationSource.Path == "" && q.ApplicationSource.Chart == "" {
+		log.WithFields(map[string]interface{}{
+			"source": q.ApplicationSource,
+		}).Infof("Not generating manifests as path and chart fields are not specified")
+
+		// Set path of the source in the environment variable if ref field is set
+		if q.ApplicationSource.Ref != "" {
+			os.Setenv(q.ApplicationSource.Ref, appPath)
+		}
+		return nil, nil
+	}
+
 	appSourceType, err := GetAppSourceType(ctx, q.ApplicationSource, appPath, q.AppName, q.EnabledSourceTypes, opt.cmpTarExcludedGlobs)
 	if err != nil {
 		return nil, err
@@ -1726,7 +1738,8 @@ func populateHelmAppDetails(res *apiclient.RepoAppDetailsResponse, appPath strin
 			// update path of value file if value file is referencing another ApplicationSource
 			if strings.HasPrefix(file, "$") {
 				pathStrings := strings.Split(file, "/")
-				pathStrings[0] = os.Getenv(strings.Split(file, "/")[0])
+				key := os.Getenv(strings.Split(file, "/")[0])
+				pathStrings[0] = strings.TrimPrefix(key, "$")
 				selectedValueFiles[i] = strings.Join(pathStrings, "/")
 			}
 		}
