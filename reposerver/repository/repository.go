@@ -853,7 +853,23 @@ func helmTemplate(appPath string, repoRoot string, env *v1alpha1.Env, q *apiclie
 			templateOpts.Name = appHelm.ReleaseName
 		}
 
-		for _, val := range appHelm.ValueFiles {
+		for i, val := range appHelm.ValueFiles {
+			// ValueFiles referring to another source within the application
+			if strings.HasPrefix(val, "$") {
+				pathStrings := strings.Split(val, "/")
+				key := strings.TrimPrefix(strings.Split(val, "/")[0], "$")
+				pathStrings[0] = os.Getenv(key)
+				appHelm.ValueFiles[i] = strings.Join(pathStrings, "/")
+
+				if _, err := os.Stat(appHelm.ValueFiles[i]); err == nil {
+					if err := os.Chmod(appHelm.ValueFiles[i], 0700); err != nil {
+						log.Warnf("Failed to restore read/write/execute permissions on %s: %v", appHelm.ValueFiles[i], err)
+					} else {
+						log.Debugf("Successfully restored read/write/execute permissions on %s", appHelm.ValueFiles[i])
+					}
+				}
+				continue
+			}
 
 			// This will resolve val to an absolute path (or an URL)
 			path, isRemote, err := pathutil.ResolveFilePath(appPath, repoRoot, env.Envsubst(val), q.GetValuesFileSchemes())
@@ -880,7 +896,12 @@ func helmTemplate(appPath string, repoRoot string, env *v1alpha1.Env, q *apiclie
 				return nil, err
 			}
 			p := path.Join(os.TempDir(), rand.String())
-			defer func() { _ = os.RemoveAll(p) }()
+			defer func() {
+				// do not remove the directory if it is the source has Ref field set
+				if q.ApplicationSource.Ref == "" {
+					_ = os.RemoveAll(p)
+				}
+			}()
 			err = os.WriteFile(p, []byte(appHelm.Values), 0644)
 			if err != nil {
 				return nil, err
@@ -1024,16 +1045,9 @@ func GenerateManifests(ctx context.Context, appPath, repoRoot, revision string, 
 
 	resourceTracking := argo.NewResourceTracking()
 
-	if q.ApplicationSource.Path == "" && q.ApplicationSource.Chart == "" {
-		log.WithFields(map[string]interface{}{
-			"source": q.ApplicationSource,
-		}).Infof("Not generating manifests as path and chart fields are not specified")
-
-		// Set path of the source in the environment variable if ref field is set
-		if q.ApplicationSource.Ref != "" {
-			os.Setenv(q.ApplicationSource.Ref, appPath)
-		}
-		return nil, nil
+	// Set path of the source in the environment variable if ref field is set
+	if q.ApplicationSource.Ref != "" {
+		os.Setenv(q.ApplicationSource.Ref, appPath)
 	}
 
 	appSourceType, err := GetAppSourceType(ctx, q.ApplicationSource, appPath, q.AppName, q.EnabledSourceTypes, opt.cmpTarExcludedGlobs)
@@ -1693,6 +1707,7 @@ func (s *Service) GetAppDetails(ctx context.Context, q *apiclient.RepoServerAppD
 
 		switch appSourceType {
 		case v1alpha1.ApplicationSourceTypeHelm:
+			log.Debug("Starting populateHelmAppDetails")
 			if err := populateHelmAppDetails(res, opContext.appPath, repoRoot, q); err != nil {
 				return err
 			}
@@ -1733,16 +1748,6 @@ func populateHelmAppDetails(res *apiclient.RepoAppDetailsResponse, appPath strin
 
 	if q.Source.Helm != nil {
 		selectedValueFiles = q.Source.Helm.ValueFiles
-
-		for i, file := range selectedValueFiles {
-			// update path of value file if value file is referencing another ApplicationSource
-			if strings.HasPrefix(file, "$") {
-				pathStrings := strings.Split(file, "/")
-				key := os.Getenv(strings.Split(file, "/")[0])
-				pathStrings[0] = strings.TrimPrefix(key, "$")
-				selectedValueFiles[i] = strings.Join(pathStrings, "/")
-			}
-		}
 	}
 
 	availableValueFiles, err := findHelmValueFilesInPath(appPath)
@@ -1778,7 +1783,19 @@ func populateHelmAppDetails(res *apiclient.RepoAppDetailsResponse, appPath strin
 	}
 	var resolvedSelectedValueFiles []pathutil.ResolvedFilePath
 	// drop not allowed values files
-	for _, file := range selectedValueFiles {
+	for i, file := range selectedValueFiles {
+		// update path of value file if value file is referencing another ApplicationSource
+		if strings.HasPrefix(file, "$") {
+			pathStrings := strings.Split(file, "/")
+			key := strings.TrimPrefix(strings.Split(file, "/")[0], "$")
+			pathStrings[0] = os.Getenv(key)
+			selectedValueFiles[i] = strings.Join(pathStrings, "/")
+
+			if _, err := os.Stat(selectedValueFiles[i]); err != nil {
+				log.Warnf("Values file %s is not allowed: %v", file, err)
+			}
+			continue
+		}
 		if resolvedFile, _, err := pathutil.ResolveFilePath(appPath, repoRoot, file, q.GetValuesFileSchemes()); err == nil {
 			resolvedSelectedValueFiles = append(resolvedSelectedValueFiles, resolvedFile)
 		} else {
